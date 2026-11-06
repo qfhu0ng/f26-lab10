@@ -73,6 +73,46 @@ you missed. Leave the table as you first wrote it.
 that pair pins the schedule you predicted, and the output of two separate
 runs (assertion failure and log lines).
 
+Test: `RaceTest.twoCustomersBookingTheSameSlotConfirmOnlyOne`.
+
+Aim: `new PausingStore(real, "hasOverlap", 1)`. A starts alone and B starts
+only after `awaitPaused()` returns, so call 1 of `hasOverlap` is A's. The gate
+parks A after the real store has answered `false` and released its lock, but
+before `book()` gets that answer, which is the gap between the check and the
+insert (t1). B's check is call 2, which the one-shot gate lets through, so B
+books start to finish (t2, t3). `release()` lets A insert on its old answer
+(t4). The test asserts that the gate fired and that both threads finished,
+then checks the end state in `real`: exactly one CONFIRMED booking for
+`WEH-5409 [540, 600)`.
+
+Result: red on both runs, failing on the end-state assertion with 2 instead
+of 1, as predicted. `bk-1` is B's booking and `bk-2` is A's: `book()` takes
+its id after the check returns, and A was still parked when B took its id.
+The pair has the ticket's shape: two confirmations for one room and range,
+consecutive ids, 2 ms apart here (1 ms in the ticket), nothing logged between
+them. The full suite on the same code: 12 tests, 1 failure (this one); the 11
+shipped tests stay green.
+
+Run 1 (`mvn -B test -Dtest=RaceTest`):
+
+```
+2026-11-06T08:55:33.334Z INFO booking.confirmed booking=bk-1 room=WEH-5409 start=540 end=600
+2026-11-06T08:55:33.336Z INFO booking.confirmed booking=bk-2 room=WEH-5409 start=540 end=600
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.043 s <<< FAILURE! -- in edu.cmu.cs214.lab10.harness.RaceTest
+[ERROR] edu.cmu.cs214.lab10.harness.RaceTest.twoCustomersBookingTheSameSlotConfirmOnlyOne -- Time elapsed: 0.029 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: CONFIRMED bookings for WEH-5409 [540, 600) ==> expected: <1> but was: <2>
+```
+
+Run 2 (`mvn -B test -Dtest=RaceTest`):
+
+```
+2026-11-06T08:55:36.091Z INFO booking.confirmed booking=bk-1 room=WEH-5409 start=540 end=600
+2026-11-06T08:55:36.093Z INFO booking.confirmed booking=bk-2 room=WEH-5409 start=540 end=600
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.042 s <<< FAILURE! -- in edu.cmu.cs214.lab10.harness.RaceTest
+[ERROR] edu.cmu.cs214.lab10.harness.RaceTest.twoCustomersBookingTheSameSlotConfirmOnlyOne -- Time elapsed: 0.027 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: CONFIRMED bookings for WEH-5409 [540, 600) ==> expected: <1> but was: <2>
+```
+
 ---
 
 ## Milestone 2: the patch a teammate sent
