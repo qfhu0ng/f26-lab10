@@ -56,6 +56,40 @@ class RaceTest {
                 "CONFIRMED bookings for " + WEAN + " [540, 600)");
     }
 
+    /**
+     * Milestone 2: the same two customers, aimed at the teammate's re-check.
+     *
+     * <p>Aim: {@code hasOverlap}, call 2. On the patched {@code book()}, A
+     * starts alone and makes two overlap checks before its insert, so calls 1
+     * and 2 are both A's. The gate parks A after its re-check has returned
+     * false, which is the last read before the write. B then books the same
+     * slot start to finish, its own two checks being calls 3 and 4. A is
+     * released and inserts on its old answer. On code without a second check,
+     * A never makes call 2 and the gate-fired assertion fails.
+     */
+    @Test
+    void twoCustomersStillConfirmTwiceWhenPausedAfterTheRecheck() throws InterruptedException {
+        InMemoryBookingStore real = new InMemoryBookingStore();
+        PausingStore gated = new PausingStore(real, "hasOverlap", 2);
+        BookingService service = new BookingService(gated, ROOMS);
+
+        Thread a = new Thread(() -> service.book(WEAN, 540, 600), "customer-A");
+        a.start();
+        assertTrue(gated.awaitPaused(), "A was never parked in its second overlap check");
+
+        Thread b = new Thread(() -> service.book(WEAN, 540, 600), "customer-B");
+        b.start();
+        b.join(PausingStore.TIMEOUT_MILLIS);
+
+        gated.release();
+        a.join(PausingStore.TIMEOUT_MILLIS);
+        b.join(PausingStore.TIMEOUT_MILLIS);
+        assertFalse(a.isAlive() || b.isAlive(), "a booking thread did not finish");
+
+        assertEquals(1, confirmedCount(real, WEAN, 540, 600),
+                "CONFIRMED bookings for " + WEAN + " [540, 600)");
+    }
+
     private static long confirmedCount(InMemoryBookingStore store, String roomId, int start, int end) {
         return store.bookingsForRoom(roomId).stream()
                 .filter(booking -> booking.status() == BookingStatus.CONFIRMED)
