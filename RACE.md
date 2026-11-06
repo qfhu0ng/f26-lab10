@@ -50,12 +50,19 @@ Two threads, one row per step, in the form from lecture. Describe what each
 thread does at that step and leave the other column empty. Add or remove rows
 as your prediction needs.
 
+Start: no bookings. Threads A and B both book the same room for `[540, 600)`
+at the same time.
+
 | Step | Thread A | Thread B |
 |---|---|---|
-| t1 | | |
-| t2 | | |
-| t3 | | |
-| | **End state:** | |
+| t1 | `book()` calls `hasOverlap()` first. The underlying store checks under its lock, gets `false`, and releases the lock. `PausingStore` then pauses A before the result is returned to `book()`. | |
+| t2 | | `book()` calls `hasOverlap()`. A has not inserted anything yet, so B's check also returns `false`. |
+| t3 | | Inserts a CONFIRMED booking and finishes its request. |
+| t4 | The test releases A. A receives the `false` computed earlier, does not check again, and inserts a second CONFIRMED booking. | |
+| | **End state:** two CONFIRMED bookings for the same room and slot. This violates "at most one CONFIRMED booking covering any given minute", so the assertion expecting 1 fails with an actual count of 2. | |
+
+Each store method is locked on its own, but nothing makes the check and the
+insert atomic together.
 
 If the run turned out different from your prediction, add one line on what
 you missed. Leave the table as you first wrote it.
