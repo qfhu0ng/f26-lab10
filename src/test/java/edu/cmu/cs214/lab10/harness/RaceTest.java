@@ -27,55 +27,26 @@ class RaceTest {
     /**
      * Milestone 1: the interleaving predicted in RACE.md.
      *
-     * <p>Aim: {@code hasOverlap}, call 1. A starts alone and B starts only
-     * after A is parked, so the first overlap check is A's. A's check has
-     * already returned false when the gate parks it, before {@code book()}
-     * sees the answer. B then books the same slot start to finish. A is
-     * released and inserts on its old answer.
+     * <p>Aimed in milestone 1 at {@code hasOverlap}, call 1: A parked after its
+     * check returned false and before its insert, B booked the slot, and A
+     * inserted on its old answer.
+     *
+     * <p>Re-aimed in milestone 3, because {@code book()} now checks and inserts
+     * in one store call and no longer calls {@code hasOverlap}: aim
+     * {@code insertIfFree}, call 1. A starts alone, so the first call is A's,
+     * and the gate parks A in the only place left between its store work and
+     * the end of {@code book()}. B then books the same slot. Same end-state
+     * assertion.
      */
     @Test
     void twoCustomersBookingTheSameSlotConfirmOnlyOne() throws InterruptedException {
         InMemoryBookingStore real = new InMemoryBookingStore();
-        PausingStore gated = new PausingStore(real, "hasOverlap", 1);
+        PausingStore gated = new PausingStore(real, "insertIfFree", 1);
         BookingService service = new BookingService(gated, ROOMS);
 
         Thread a = new Thread(() -> service.book(WEAN, 540, 600), "customer-A");
         a.start();
-        assertTrue(gated.awaitPaused(), "A was never parked in its overlap check");
-
-        Thread b = new Thread(() -> service.book(WEAN, 540, 600), "customer-B");
-        b.start();
-        b.join(PausingStore.TIMEOUT_MILLIS);
-
-        gated.release();
-        a.join(PausingStore.TIMEOUT_MILLIS);
-        b.join(PausingStore.TIMEOUT_MILLIS);
-        assertFalse(a.isAlive() || b.isAlive(), "a booking thread did not finish");
-
-        assertEquals(1, confirmedCount(real, WEAN, 540, 600),
-                "CONFIRMED bookings for " + WEAN + " [540, 600)");
-    }
-
-    /**
-     * Milestone 2: the same two customers, aimed at the teammate's re-check.
-     *
-     * <p>Aim: {@code hasOverlap}, call 2. On the patched {@code book()}, A
-     * starts alone and makes two overlap checks before its insert, so calls 1
-     * and 2 are both A's. The gate parks A after its re-check has returned
-     * false, which is the last read before the write. B then books the same
-     * slot start to finish, its own two checks being calls 3 and 4. A is
-     * released and inserts on its old answer. On code without a second check,
-     * A never makes call 2 and the gate-fired assertion fails.
-     */
-    @Test
-    void twoCustomersStillConfirmTwiceWhenPausedAfterTheRecheck() throws InterruptedException {
-        InMemoryBookingStore real = new InMemoryBookingStore();
-        PausingStore gated = new PausingStore(real, "hasOverlap", 2);
-        BookingService service = new BookingService(gated, ROOMS);
-
-        Thread a = new Thread(() -> service.book(WEAN, 540, 600), "customer-A");
-        a.start();
-        assertTrue(gated.awaitPaused(), "A was never parked in its second overlap check");
+        assertTrue(gated.awaitPaused(), "A was never parked in its check-and-insert");
 
         Thread b = new Thread(() -> service.book(WEAN, 540, 600), "customer-B");
         b.start();

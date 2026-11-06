@@ -29,6 +29,18 @@ public interface BookingStore {
     void insert(Booking booking);
 
     /**
+     * Stores the booking only if no CONFIRMED booking for the same room touches
+     * its half-open range, as one indivisible step: no other call on the store
+     * can run between the check and the write.
+     *
+     * @param booking the booking to store; ids are assumed unique, as for
+     *     {@link #insert}
+     * @return true when the booking was stored, false when the range was taken
+     *     and nothing was stored
+     */
+    boolean insertIfFree(Booking booking);
+
+    /**
      * Every booking held for the room, in insertion order, in every status.
      *
      * @return a snapshot the caller owns; later writes to the store do not
